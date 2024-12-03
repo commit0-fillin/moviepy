@@ -50,11 +50,38 @@ class FFMPEG_VideoReader:
 
     def initialize(self, starttime=0):
         """Opens the file, creates the pipe. """
-        pass
+        self.close()  # if any
+
+        if starttime != 0:
+            offset = min(1, starttime)
+            i_arg = ['-ss', "%.06f" % (starttime - offset),
+                     '-i', self.filename,
+                     '-ss', "%.06f" % offset]
+        else:
+            i_arg = ['-i', self.filename]
+
+        cmd = ([get_setting("FFMPEG_BINARY")] + i_arg +
+               ['-loglevel', 'error',
+                '-f', 'image2pipe',
+                '-pix_fmt', self.pix_fmt,
+                '-vcodec', 'rawvideo', '-'])
+
+        if self.size != self.infos['video_size']:
+            cmd += ['-s', '%dx%d' % (self.size[0], self.size[1]),
+                    '-sws_flags', self.resize_algo]
+
+        self.proc = sp.Popen(cmd, bufsize=self.bufsize,
+                             stdout=sp.PIPE,
+                             stderr=sp.PIPE)
+
+        self.pos = int(self.fps * starttime)
 
     def skip_frames(self, n=1):
         """Reads and throws away n frames """
-        pass
+        w, h = self.size
+        for i in range(n):
+            self.proc.stdout.read(self.depth * w * h)
+            self.pos += 1
 
     def get_frame(self, t):
         """ Read a file video frame at time t.
@@ -64,7 +91,21 @@ class FFMPEG_VideoReader:
         This function tries to avoid fetching arbitrary frames
         whenever possible, by moving between adjacent frames.
         """
-        pass
+        # Get frame number from time
+        pos = int(self.fps * t)
+        
+        if pos == self.pos:
+            return self.lastread
+        else:
+            if (pos < self.pos) or (pos > self.pos + 100):
+                self.initialize(t)
+                self.pos = pos
+            else:
+                self.skip_frames(pos - self.pos - 1)
+            
+            result = self.read_frame()
+            self.pos = pos
+            return result
 
     def __del__(self):
         self.close()
@@ -89,7 +130,16 @@ def ffmpeg_read_image(filename, with_mask=True):
       this layer as the mask of the returned ImageClip
 
     """
-    pass
+    if with_mask:
+        pix_fmt = 'rgba'
+    else:
+        pix_fmt = 'rgb24'
+    
+    reader = FFMPEG_VideoReader(filename, pix_fmt=pix_fmt, check_duration=False)
+    im = reader.lastread
+    reader.close()
+
+    return im
 
 def ffmpeg_parse_infos(filename, print_infos=False, check_duration=True, fps_source='tbr'):
     """Get file infos using ffmpeg.
@@ -102,4 +152,67 @@ def ffmpeg_parse_infos(filename, print_infos=False, check_duration=True, fps_sou
     fetching the uncomplete frames at the end, which raises an error.
 
     """
-    pass
+    # Open the file in a pipe, read output
+    cmd = [get_setting("FFMPEG_BINARY"), "-i", filename]
+    if not check_duration:
+        cmd += ["-t", "00:00:00.1"]
+    cmd += ["-f", "null", "-"]
+
+    popen_params = {"bufsize": 10**5,
+                    "stdout": sp.PIPE,
+                    "stderr": sp.PIPE,
+                    "stdin": DEVNULL}
+
+    if os.name == "nt":
+        popen_params["creationflags"] = 0x08000000
+
+    proc = sp.Popen(cmd, **popen_params)
+    (output, error) = proc.communicate()
+    infos = error.decode('utf8')
+
+    if print_infos:
+        # print the whole info text returned by FFMPEG
+        print(infos)
+
+    lines = infos.splitlines()
+    if "No such file or directory" in lines[-1]:
+        raise IOError(("MoviePy error: the file %s could not be found!\n"
+                       "Please check that you entered the correct "
+                       "path.") % filename)
+
+    result = dict()
+    result['video_found'] = False
+    result['audio_found'] = False
+    result['duration'] = None
+    result['video_duration'] = None
+    result['audio_duration'] = None
+
+    # parse the output
+    for line in lines:
+        try:
+            line = line.strip()
+            if line.startswith('Duration:'):
+                match = re.findall("([0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9])", line)[0]
+                result['duration'] = cvsecs(match)
+            elif line.startswith('Stream') and 'Video:' in line:
+                result['video_found'] = True
+                match = re.findall(" [0-9]*.* fps", line)
+                fps = float(match[0].split(' ')[1])
+                result['video_fps'] = fps
+            elif line.startswith('Stream') and 'Audio:' in line:
+                result['audio_found'] = True
+        except:
+            pass
+
+    # compute video duration and number of frames
+    if result['video_found']:
+        result['video_nframes'] = int(result['duration'] * result['video_fps']) + 1
+        result['video_duration'] = result['duration']
+    if result['audio_found']:
+        result['audio_duration'] = result['duration']
+
+    # We could have also recomputed the duration from the number
+    # of frames, as follows:
+    # >>> result['duration'] = result['video_nframes'] / result['video_fps']
+
+    return result
