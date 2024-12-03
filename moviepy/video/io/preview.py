@@ -42,21 +42,24 @@ def show(clip, t=0, with_mask=True, interactive=False):
         mask = 255 * clip.mask.get_frame(t)
         img = np.dstack([img, mask]).astype('uint8')
     
-    imdisplay(img)
+    screen = imdisplay(img)
     
     if interactive:
         result = []
-        while True:
+        running = True
+        while running:
             for event in pg.event.get():
                 if event.type == pg.MOUSEBUTTONDOWN:
                     x, y = pg.mouse.get_pos()
                     rgb = img[y, x]
                     result.append({'position': (x, y), 'color': rgb})
-                elif event.type == pg.QUIT:
-                    print(result)
-                    return result
+                elif event.type == pg.QUIT or (event.type == pg.KEYDOWN and event.key == pg.K_ESCAPE):
+                    running = False
+        pg.quit()
+        return result
     else:
         pg.event.wait()
+        pg.quit()
 
 @requires_duration
 @convert_masks_to_RGB
@@ -104,14 +107,14 @@ def preview(clip, fps=15, audio=True, audio_fps=22050, audio_buffersize=3000, au
         sound = pg.sndarray.make_sound(soundarray)
 
     t0 = time.time()
-    for t in np.arange(0, clip.duration, 1.0/fps):
+    playing = True
+    while playing and (t := time.time() - t0) < clip.duration:
         img = clip.get_frame(t)
         imdisplay(img, screen)
         
         for event in pg.event.get():
             if event.type == pg.QUIT or (event.type == pg.KEYDOWN and event.key == pg.K_ESCAPE):
-                pg.quit()
-                return
+                playing = False
         
         if audio_flag:
             if t == 0:
@@ -119,6 +122,6 @@ def preview(clip, fps=15, audio=True, audio_fps=22050, audio_buffersize=3000, au
             elif not channel.get_busy():
                 channel = sound.play()
 
-        time.sleep(max(0, t - (time.time() - t0)))
+        time.sleep(max(0, (t0 + t + 1.0/fps) - time.time()))
 
     pg.quit()
