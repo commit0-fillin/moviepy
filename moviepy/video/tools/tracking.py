@@ -64,14 +64,65 @@ def manual_tracking(clip, t1=None, t2=None, fps=None, nobjects=1, savefile=None)
     >>> traj, =  Trajectory.load_list('track.txt')
     
     """
-    pass
+    import pygame as pg
+    from moviepy.video.io.preview import show
+
+    if t1 is None:
+        t1 = 0
+    if t2 is None:
+        t2 = clip.duration
+    
+    times = np.arange(t1, t2, 1.0/fps) if fps else [t1]
+    
+    trajectories = []
+    for t in times:
+        frame = show(clip.set_duration(t2-t1), t-t1, interactive=True)
+        clicks = []
+        for i in range(nobjects):
+            while True:
+                event = pg.event.wait()
+                if event.type == pg.MOUSEBUTTONDOWN:
+                    x, y = pg.mouse.get_pos()
+                    clicks.append((x, y))
+                    break
+        trajectories.append((t, clicks if nobjects > 1 else clicks[0]))
+    
+    pg.quit()
+    
+    if savefile:
+        try:
+            with open(savefile, 'w') as f:
+                json.dump(trajectories, f)
+        except Exception as e:
+            print(f"Error saving to file: {e}")
+    
+    return trajectories
 
 def findAround(pic, pat, xy=None, r=None):
     """
     find image pattern ``pat`` in ``pic[x +/- r, y +/- r]``.
     if xy is none, consider the whole picture.
     """
-    pass
+    import cv2
+    import numpy as np
+
+    if xy is None:
+        result = cv2.matchTemplate(pic, pat, cv2.TM_CCOEFF_NORMED)
+        _, _, _, max_loc = cv2.minMaxLoc(result)
+        return max_loc
+
+    x, y = xy
+    h, w = pat.shape[:2]
+    if r is None:
+        r = max(h, w)
+
+    roi = pic[max(0, y-r):min(pic.shape[0], y+r+h),
+              max(0, x-r):min(pic.shape[1], x+r+w)]
+    
+    result = cv2.matchTemplate(roi, pat, cv2.TM_CCOEFF_NORMED)
+    _, _, _, max_loc = cv2.minMaxLoc(result)
+    
+    return (max(0, x-r) + max_loc[0], max(0, y-r) + max_loc[1])
 
 def autoTrack(clip, pattern, tt=None, fps=None, radius=20, xy0=None):
     """
@@ -86,4 +137,21 @@ def autoTrack(clip, pattern, tt=None, fps=None, radius=20, xy0=None):
     to -1 the pattern will be searched in the whole screen at each frame).
     You can also provide the original position of the pattern with xy0.
     """
-    pass
+    if not autotracking_possible:
+        raise ImportError("autoTrack requires OpenCV. Try installing it with 'pip install opencv-python'")
+
+    if tt is None:
+        if fps is None:
+            fps = clip.fps
+        tt = np.arange(0, clip.duration, 1.0/fps)
+
+    if xy0 is None:
+        xy0 = findAround(clip.get_frame(tt[0]), pattern)
+
+    def find_pattern(t):
+        frame = clip.get_frame(t)
+        return findAround(frame, pattern, xy=xy0, r=radius)
+
+    result = [find_pattern(t) for t in tt]
+    
+    return list(zip(tt, result))
