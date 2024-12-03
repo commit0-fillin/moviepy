@@ -17,4 +17,10 @@ def loop(self, n=None, duration=None):
     duration
       Total duration of the clip. Can be specified instead of n.
     """
-    pass
+    if duration is not None:
+        n = int(duration / self.duration)
+    
+    if n is None:
+        return self.fl(lambda gf, t: gf(t % self.duration))
+    else:
+        return self.fl(lambda gf, t: gf(t % self.duration) if t < n * self.duration else gf(self.duration))
