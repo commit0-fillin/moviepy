@@ -14,7 +14,22 @@ def crossfadein(clip, duration):
     """ Makes the clip appear progressively, over ``duration`` seconds.
     Only works when the clip is included in a CompositeVideoClip.
     """
-    pass
+    def make_frame(t):
+        if t >= duration:
+            return clip.get_frame(t)
+        else:
+            fading = clip.get_frame(t)
+            mask = np.array([(t / duration)] * 3).reshape(1, 1, 3)
+            return fading * mask
+
+    new_clip = clip.set_make_frame(make_frame)
+    new_clip.duration = clip.duration
+    new_clip.end = clip.end
+
+    if clip.mask is not None:
+        new_clip.mask = clip.mask.fx(crossfadein, duration)
+
+    return new_clip
 
 @requires_duration
 @add_mask_if_none
@@ -22,15 +37,35 @@ def crossfadeout(clip, duration):
     """ Makes the clip disappear progressively, over ``duration`` seconds.
     Only works when the clip is included in a CompositeVideoClip.
     """
-    pass
+    def make_frame(t):
+        if t <= clip.duration - duration:
+            return clip.get_frame(t)
+        else:
+            fading = clip.get_frame(t)
+            mask = np.array([(clip.duration - t) / duration] * 3).reshape(1, 1, 3)
+            return fading * mask
 
-def slide_in(clip, duration, side):
-    """ Makes the clip arrive from one side of the screen.
+    new_clip = clip.set_make_frame(make_frame)
+    new_clip.duration = clip.duration
+    new_clip.end = clip.end
 
-    Only works when the clip is included in a CompositeVideoClip,
-    and if the clip has the same size as the whole composition.
+    if clip.mask is not None:
+        new_clip.mask = clip.mask.fx(crossfadeout, duration)
 
-    Parameters
+    return new_clip
+
+
+    clip
+      A video clip.
+
+    duration
+      Time taken for the clip to be fully visible
+
+    side
+      Side of the screen where the clip comes from. One of
+      'top' | 'bottom' | 'left' | 'right'
+
+    Examples
     ===========
 
     clip
@@ -56,14 +91,18 @@ def slide_in(clip, duration, side):
     """
     pass
 
-@requires_duration
-def slide_out(clip, duration, side):
-    """ Makes the clip go away by one side of the screen.
 
-    Only works when the clip is included in a CompositeVideoClip,
-    and if the clip has the same size as the whole composition.
+    clip
+      A video clip.
 
-    Parameters
+    duration
+      Time taken for the clip to fully disappear.
+
+    side
+      Side of the screen where the clip goes. One of
+      'top' | 'bottom' | 'left' | 'right'
+
+    Examples
     ===========
 
     clip
@@ -94,4 +133,14 @@ def make_loopable(clip, cross_duration):
     """ Makes the clip fade in progressively at its own end, this way
     it can be looped indefinitely. ``cross`` is the duration in seconds
     of the fade-in.  """
-    pass
+    d = clip.duration
+    def make_frame(t):
+        if t < d - cross_duration:
+            return clip.get_frame(t)
+        else:
+            fade_in_frame = clip.get_frame(t - d + cross_duration)
+            fade_out_frame = clip.get_frame(t)
+            blend_factor = (t - (d - cross_duration)) / cross_duration
+            return fade_out_frame * (1 - blend_factor) + fade_in_frame * blend_factor
+
+    return clip.set_make_frame(make_frame)
