@@ -10,23 +10,42 @@ from .compat import DEVNULL
 
 def sys_write_flush(s):
     """ Writes and flushes without delay a text in the console """
-    pass
+    sys.stdout.write(s)
+    sys.stdout.flush()
 
 def verbose_print(verbose, s):
     """ Only prints s (with sys_write_flush) if verbose is True."""
-    pass
+    if verbose:
+        sys_write_flush(s)
 
 def subprocess_call(cmd, logger='bar', errorprint=True):
     """ Executes the given subprocess command.
     
     Set logger to None or a custom Proglog logger to avoid printings.
     """
-    pass
+    if logger == 'bar':
+        logger = proglog.default_bar_logger('Moviepy')
+    
+    try:
+        proc = sp.Popen(cmd, shell=True, stdout=DEVNULL, stderr=sp.PIPE)
+        out, err = proc.communicate()
+        
+        if proc.returncode:
+            if errorprint:
+                logger.error(err.decode('utf8'))
+            raise IOError(err.decode('utf8'))
+    except Exception as e:
+        if errorprint:
+            logger.error(str(e))
+        raise IOError(str(e))
 
 def is_string(obj):
     """ Returns true if s is string or string-like object,
     compatible with Python 2 and Python 3."""
-    pass
+    try:
+        return isinstance(obj, basestring)
+    except NameError:
+        return isinstance(obj, str)
 
 def cvsecs(time):
     """ Will convert any time into seconds. 
@@ -51,16 +70,37 @@ def cvsecs(time):
     >>> cvsecs('33.5')      # only secs
     33.5
     """
-    pass
+    if isinstance(time, (int, float)):
+        return time
 
-def deprecated_version_of(f, oldname, newname=None):
-    """ Indicates that a function is deprecated and has a new name.
+    if isinstance(time, tuple):
+        if len(time) == 2:
+            return time[0] * 60 + time[1]
+        elif len(time) == 3:
+            return time[0] * 3600 + time[1] * 60 + time[2]
 
-    `f` is the new function, `oldname` the name of the deprecated
-    function, `newname` the name of `f`, which can be automatically
-    found.
+    if isinstance(time, str):
+        time = time.replace(',', '.')
+        if ':' not in time:
+            return float(time)
+        
+        parts = time.split(':')
+        parts = [float(part) for part in parts]
+        
+        if len(parts) == 2:
+            return parts[0] * 60 + parts[1]
+        elif len(parts) == 3:
+            return parts[0] * 3600 + parts[1] * 60 + parts[2]
 
-    Returns
+    return time
+
+
+    f_deprecated
+      A function that does the same thing as f, but with a docstring
+      and a printed message on call which say that the function is
+      deprecated and that you should use f instead.
+
+    Examples
     ========
 
     f_deprecated
