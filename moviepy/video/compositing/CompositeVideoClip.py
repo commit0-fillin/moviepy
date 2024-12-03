@@ -89,22 +89,46 @@ class CompositeVideoClip(VideoClip):
     def playing_clips(self, t=0):
         """ Returns a list of the clips in the composite clips that are
             actually playing at the given time `t`. """
-        pass
+        return [c for c in self.clips if c.start <= t < c.end]
 
 def clips_array(array, rows_widths=None, cols_widths=None, bg_color=None):
     """
+    Construct a CompositeVideoClip from an array of clips.
 
     rows_widths
       widths of the different rows in pixels. If None, is set automatically.
 
     cols_widths
-      widths of the different colums in pixels. If None, is set automatically.
+      widths of the different columns in pixels. If None, is set automatically.
 
-    cols_widths
-    
     bg_color
        Fill color for the masked and unfilled regions. Set to None for these
        regions to be transparent (will be slower).
 
     """
-    pass
+    array = np.array(array)
+    rows, cols = array.shape
+
+    # Calculate rows_widths if not provided
+    if rows_widths is None:
+        rows_widths = [max(row, key=lambda c: c.w).w for row in array]
+
+    # Calculate cols_widths if not provided
+    if cols_widths is None:
+        cols_widths = [max(array[:, i], key=lambda c: c.h).h for i in range(cols)]
+
+    # Calculate total size
+    total_width = sum(cols_widths)
+    total_height = sum(rows_widths)
+
+    # Position clips
+    positioned_clips = []
+    y = 0
+    for i, row in enumerate(array):
+        x = 0
+        for j, clip in enumerate(row):
+            positioned_clips.append(clip.set_position((x, y)))
+            x += cols_widths[j]
+        y += rows_widths[i]
+
+    return CompositeVideoClip(positioned_clips, size=(total_width, total_height), bg_color=bg_color)
