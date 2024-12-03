@@ -93,5 +93,10 @@ class VideoFileClip(VideoClip):
             self.audio = AudioFileClip(filename, buffersize=audio_buffersize, fps=audio_fps, nbytes=audio_nbytes)
 
     def close(self):
-        """ Close the internal reader. """
-        pass
+        """ Close the internal reader and audio clip if present. """
+        if hasattr(self, 'reader') and self.reader:
+            self.reader.close()
+            self.reader = None
+        if hasattr(self, 'audio') and self.audio:
+            self.audio.close()
+            self.audio = None
