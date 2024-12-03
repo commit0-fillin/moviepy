@@ -15,4 +15,7 @@ def volumex(clip, factor):
     >>> newclip = clip.fx( volumex, 0.5) # half audio, use with fx
     >>> newclip = clip.volumex(2) # only if you used "moviepy.editor"
     """
-    pass
+    def change_volume(get_frame, t):
+        return factor * get_frame(t)
+    
+    return clip.set_audio_func(change_volume)
