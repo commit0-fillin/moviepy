@@ -87,7 +87,34 @@ class FFMPEG_VideoWriter:
 
     def write_frame(self, img_array):
         """ Writes one frame in the file."""
-        pass
+        if img_array.dtype != 'uint8':
+            img_array = np.clip(img_array, 0, 255).astype('uint8')
+        try:
+            self.proc.stdin.write(img_array.tobytes())
+        except IOError as err:
+            ffmpeg_error = self.proc.stderr.read().decode()
+            error = (f"MoviePy error: FFMPEG encountered the following error while "
+                     f"writing file {self.filename}:\n\n {ffmpeg_error}")
+            if "Unknown encoder" in ffmpeg_error:
+                error += ("\nThe video export failed because FFMPEG didn't find the "
+                          "specified codec for video encoding (%s). Please install "
+                          "this codec or change the codec when calling "
+                          "write_videofile. For instance:\n"
+                          "  >>> clip.write_videofile('myvid.webm', codec='libvpx')")%(self.codec)
+            elif "incorrect codec parameters ?" in ffmpeg_error:
+                error += ("\nThe video export failed, possibly because the codec "
+                          "specified for the video (%s) is not compatible with "
+                          "the given extension (%s). Please specify a valid "
+                          "'codec' argument in write_videofile. This would be "
+                          "'libx264' or 'mpeg4' for mp4, 'libtheora' for ogv, "
+                          "'libvpx' for webm.")%(self.codec, self.ext)
+            elif  "bitrate not specified" in ffmpeg_error:
+                error += ("\nThe video export failed, possibly because the bitrate "
+                          "specified was too high or too low for the video codec.")
+            elif 'Invalid encoder type' in ffmpeg_error:
+                error += ("\nThe video export failed because the codec "
+                          "or file extension you provided is not a video")
+            raise IOError(error)
 
     def __enter__(self):
         return self
@@ -99,9 +126,81 @@ def ffmpeg_write_video(clip, filename, fps, codec='libx264', bitrate=None, prese
     """ Write the clip to a videofile. See VideoClip.write_videofile for details
     on the parameters.
     """
-    pass
+    logger = proglog.default_bar_logger(logger)
+    if not isinstance(clip, VideoClip):
+        raise ValueError("The clip must be a VideoClip")
+    
+    logger(message='Moviepy - Writing video %s' % filename)
+    if audiofile:
+        logger(message='Moviepy - Writing audio %s' % audiofile)
+
+    # Make sure the filename has the correct extension
+    name, ext = os.path.splitext(filename)
+    ext = ext[1:].lower()
+    if ext not in ['mp4', 'ogv', 'webm', 'avi']:
+        raise ValueError("The video extension must be mp4, ogv, webm or avi")
+
+    # Create a writer
+    writer = FFMPEG_VideoWriter(filename, clip.size, fps, codec=codec,
+                                preset=preset, bitrate=bitrate, withmask=withmask,
+                                logfile=write_logfile and open(filename + '.log', 'w'),
+                                audiofile=audiofile, threads=threads,
+                                ffmpeg_params=ffmpeg_params)
+
+    # Write frames to the writer
+    nframes = int(clip.duration * fps)
+    for t,frame in clip.iter_frames(logger=logger, with_times=True, fps=fps, dtype="uint8"):
+        if withmask:
+            mask = 255 * clip.mask.get_frame(t)
+            if mask.dtype != "uint8":
+                mask = mask.astype("uint8")
+            frame = np.dstack([frame, mask])
+        
+        writer.write_frame(frame)
+
+    # Close the writer
+    writer.close()
+
+    # Write the log file if required
+    if write_logfile:
+        writer.logfile.close()
+    logger(message='Moviepy - Done !')
 
 def ffmpeg_write_image(filename, image, logfile=False):
     """ Writes an image (HxWx3 or HxWx4 numpy array) to a file, using
         ffmpeg. """
-    pass
+    if not isinstance(image, np.ndarray):
+        raise ValueError("The image must be a numpy array with shape (h,w,3) or (h,w,4)")
+    
+    if not (image.ndim == 3 and image.shape[2] in [3, 4]):
+        raise ValueError("The image must have shape (h,w,3) or (h,w,4)")
+
+    h, w = image.shape[:2]
+    
+    cmd = [get_setting("FFMPEG_BINARY"), '-y',
+           '-f', 'rawvideo',
+           '-vcodec', 'rawvideo',
+           '-s', f'{w}x{h}',  # size of one frame
+           '-pix_fmt', 'rgb24' if image.shape[2] == 3 else 'rgba',
+           '-i', '-',  # The input comes from a pipe
+           '-an',  # Tells FFMPEG not to expect any audio
+           '-vcodec', 'png',
+           filename]
+
+    popen_params = {"stdout": DEVNULL,
+                    "stderr": DEVNULL if logfile else None,
+                    "stdin": sp.PIPE}
+
+    if os.name == "nt":
+        popen_params["creationflags"] = 0x08000000
+
+    proc = sp.Popen(cmd, **popen_params)
+    proc.stdin.write(image.tobytes())
+    proc.stdin.close()
+    proc.wait()
+
+    if proc.returncode:
+        err = "\n".join(["MoviePy running : %s" % cmd,
+                         "Command returned with error %d" % proc.returncode,
+                         "Refer to FFMPEG documentation for more information"])
+        raise IOError(err)
