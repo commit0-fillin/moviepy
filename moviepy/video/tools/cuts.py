@@ -7,7 +7,33 @@ from moviepy.decorators import use_clip_fps_by_default
 @use_clip_fps_by_default
 def find_video_period(clip, fps=None, tmin=0.3):
     """ Finds the period of a video based on frames correlation """
-    pass
+    if fps is None:
+        fps = clip.fps
+
+    frame_duration = 1.0 / fps
+    n_frames = int(clip.duration * fps)
+
+    # Calculate correlation between frames
+    correlations = []
+    for i in range(1, n_frames):
+        frame1 = clip.get_frame(i * frame_duration)
+        frame2 = clip.get_frame((i + 1) * frame_duration)
+        correlation = np.corrcoef(frame1.flatten(), frame2.flatten())[0, 1]
+        correlations.append(correlation)
+
+    # Find peaks in correlation
+    peaks = [i for i in range(1, len(correlations) - 1) if correlations[i] > correlations[i-1] and correlations[i] > correlations[i+1]]
+
+    # Calculate time differences between peaks
+    time_diffs = [peak * frame_duration for peak in peaks]
+
+    # Find the most common time difference above tmin
+    time_diffs = [diff for diff in time_diffs if diff >= tmin]
+    if not time_diffs:
+        return None
+
+    period = max(set(time_diffs), key=time_diffs.count)
+    return period
 
 class FramesMatch:
     """
@@ -61,14 +87,23 @@ class FramesMatches(list):
         >>> # Only keep the matches corresponding to (> 1 second) sequences.
         >>> new_matches = matches.filter( lambda match: match.time_span > 1)
         """
-        pass
+        filtered_matches = [match for match in self if cond(match)]
+        return FramesMatches(filtered_matches)
 
     @staticmethod
     def load(filename):
         """ Loads a FramesMatches object from a file.
         >>> matching_frames = FramesMatches.load("somefile")
         """
-        pass
+        with open(filename, 'r') as f:
+            lines = f.readlines()
+        
+        matches = []
+        for line in lines:
+            t1, t2, d_min, d_max = map(float, line.strip().split(','))
+            matches.append(FramesMatch(t1, t2, d_min, d_max))
+        
+        return FramesMatches(matches)
 
     @staticmethod
     def from_clip(clip, dist_thr, max_d, fps=None):
@@ -109,7 +144,26 @@ class FramesMatches(list):
           Frames per second (default will be clip.fps)
         
         """
-        pass
+        if fps is None:
+            fps = clip.fps
+
+        duration = clip.duration
+        n_frames = int(duration * fps)
+        
+        frames = [clip.get_frame(t) for t in np.arange(0, duration, 1/fps)]
+        
+        matches = []
+        for i in range(n_frames):
+            for j in range(i+1, n_frames):
+                if (j-i)/fps > max_d:
+                    break
+                
+                dist = np.mean(np.abs(frames[i] - frames[j]))
+                if dist < dist_thr:
+                    t1, t2 = i/fps, j/fps
+                    matches.append(FramesMatch(t1, t2, dist, dist))
+        
+        return FramesMatches(matches)
 
     def select_scenes(self, match_thr, min_time_span, nomatch_thr=None, time_distance=0):
         """
@@ -125,7 +179,19 @@ class FramesMatches(list):
           If None, then it is chosen equal to match_thr
 
         """
-        pass
+        if nomatch_thr is None:
+            nomatch_thr = match_thr
+
+        selected = []
+        for match in self:
+            if match.time_span < min_time_span:
+                continue
+            
+            if match.d_min <= match_thr and match.d_max <= nomatch_thr:
+                if not selected or (match.t1 - selected[-1].t2) >= time_distance:
+                    selected.append(match)
+
+        return FramesMatches(selected)
 
 @use_clip_fps_by_default
 def detect_scenes(clip=None, luminosities=None, thr=10, logger='bar', fps=None):
@@ -169,4 +235,26 @@ def detect_scenes(clip=None, luminosities=None, thr=10, logger='bar', fps=None):
     
 
     """
-    pass
+    if luminosities is None:
+        if clip is None:
+            raise ValueError("You must provide either a clip or luminosities")
+        if fps is None:
+            fps = clip.fps
+        
+        def frame_luminosity(t):
+            frame = clip.get_frame(t)
+            return np.mean(frame)
+        
+        luminosities = [frame_luminosity(t) for t in np.arange(0, clip.duration, 1/fps)]
+    
+    luminosity_diffs = np.diff(luminosities)
+    avg_diff = np.mean(np.abs(luminosity_diffs))
+    threshold = thr * avg_diff
+    
+    scene_changes = np.where(np.abs(luminosity_diffs) > threshold)[0]
+    scene_changes = np.insert(scene_changes, 0, -1)
+    scene_changes = np.append(scene_changes, len(luminosities) - 1)
+    
+    cuts = [(scene_changes[i] / fps, scene_changes[i+1] / fps) for i in range(len(scene_changes) - 1)]
+    
+    return cuts, luminosities
