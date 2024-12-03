@@ -68,4 +68,50 @@ def credits1(creditfile, width, stretch=30, color='white', stroke_color='black',
                 Music Supervisor    JEAN DIDIER
               
     """
-    pass
+    from moviepy.video.VideoClip import TextClip, CompositeVideoClip
+    from moviepy.video.tools.drawing import color_gradient
+    import numpy as np
+
+    # Parse the credit file
+    with open(creditfile, 'r') as f:
+        lines = f.readlines()
+
+    # Process the lines
+    texts = []
+    y = 0
+    for line in lines:
+        line = line.strip()
+        if line.startswith('#'):
+            continue
+        elif line.startswith('.blank'):
+            y += int(line.split()[1]) * fontsize
+        elif line.startswith('..'):
+            texts.append((line[2:], 'left', y))
+            y += fontsize
+        else:
+            texts.append((line, 'right', y))
+            y += fontsize
+
+    # Create text clips
+    clips = []
+    for text, align, y in texts:
+        clip = TextClip(text, fontsize=fontsize, font=font, color=color,
+                        stroke_color=stroke_color, stroke_width=stroke_width)
+        if align == 'left':
+            clip = clip.set_position((0, y))
+        else:
+            clip = clip.set_position((width - clip.w, y))
+        clips.append(clip)
+
+    # Create the final composite
+    final_height = y + fontsize  # Add extra space at the bottom
+    credit_clip = CompositeVideoClip(clips, size=(width, final_height))
+
+    # Add a gradient background
+    gradient = color_gradient(credit_clip.size, p1=(0, 0), p2=(0, credit_clip.h), 
+                              col1=(0,0,0), col2=(0.5, 0.5, 0.5))
+    credit_clip = CompositeVideoClip([credit_clip.on_color(size=credit_clip.size, 
+                                                           color=(0,0,0), pos=(0, 0)),
+                                      credit_clip])
+
+    return credit_clip.set_duration(credit_clip.h / stretch)
