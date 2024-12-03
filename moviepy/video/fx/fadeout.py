@@ -10,4 +10,16 @@ def fadeout(clip, duration, final_color=None):
     For cross-fading (progressive appearance or disappearance of a clip
     over another clip, see ``composition.crossfade``
     """
-    pass
+    if final_color is None:
+        final_color = 0 if clip.ismask else (0, 0, 0)
+
+    def make_frame(t):
+        original = clip.get_frame(t)
+        
+        if t >= clip.duration - duration:
+            factor = (t - (clip.duration - duration)) / duration
+            return np.multiply(1.0 - factor, original) + np.multiply(factor, final_color)
+        else:
+            return original
+
+    return clip.set_make_frame(make_frame)
