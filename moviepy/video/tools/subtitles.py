@@ -72,7 +72,19 @@ class SubtitlesClip(VideoClip):
         """ Returns a sequence of [(t1,t2), txt] covering all the given subclip
         from t_start to t_end. The first and last times will be cropped so as
         to be exactly t_start and t_end if possible. """
-        pass
+        if t_start is None:
+            t_start = 0
+        if t_end is None:
+            t_end = self.duration
+
+        def is_in_subclip(t1, t2):
+            return (t1 <= t_end) and (t2 >= t_start)
+
+        def try_cropping(t1, t2):
+            return (max(t1, t_start), min(t2, t_end))
+
+        return [(try_cropping(t1, t2), txt) for ((t1, t2), txt) in self.subtitles
+                if is_in_subclip(t1, t2)]
 
     def __iter__(self):
         return iter(self.subtitles)
@@ -97,4 +109,30 @@ def file_to_subtitles(filename):
 
     Only works for '.srt' format for the moment.
     """
-    pass
+    def time_to_seconds(time):
+        hours, minutes, seconds = time.split(':')
+        seconds, milliseconds = seconds.split(',')
+        return int(hours) * 3600 + int(minutes) * 60 + int(seconds) + int(milliseconds) / 1000
+
+    subtitles = []
+    current_sub = None
+    with open(filename, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if line.isdigit():
+                if current_sub:
+                    subtitles.append(current_sub)
+                current_sub = None
+            elif '-->' in line:
+                start, end = line.split('-->')
+                start = time_to_seconds(start.strip())
+                end = time_to_seconds(end.strip())
+                current_sub = ((start, end), '')
+            elif line:
+                if current_sub:
+                    current_sub = (current_sub[0], current_sub[1] + line + '\n')
+
+    if current_sub:
+        subtitles.append(current_sub)
+
+    return subtitles
