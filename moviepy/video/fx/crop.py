@@ -28,4 +28,47 @@ def crop(clip, x1=None, y1=None, x2=None, y2=None, width=None, height=None, x_ce
     >>> crop(x_center=300, width=400, y1=100, y2=600)
     
     """
-    pass
+    w, h = clip.w, clip.h
+
+    # Calculate x1 and x2
+    if x1 is None:
+        if x_center is not None:
+            if width is not None:
+                x1 = x_center - width / 2
+            elif x2 is not None:
+                x1 = 2 * x_center - x2
+            else:
+                x1 = 0
+        else:
+            x1 = 0
+    if x2 is None:
+        if width is not None:
+            x2 = x1 + width
+        else:
+            x2 = w
+
+    # Calculate y1 and y2
+    if y1 is None:
+        if y_center is not None:
+            if height is not None:
+                y1 = y_center - height / 2
+            elif y2 is not None:
+                y1 = 2 * y_center - y2
+            else:
+                y1 = 0
+        else:
+            y1 = 0
+    if y2 is None:
+        if height is not None:
+            y2 = y1 + height
+        else:
+            y2 = h
+
+    # Ensure coordinates are within bounds
+    x1 = max(0, min(x1, w))
+    x2 = max(0, min(x2, w))
+    y1 = max(0, min(y1, h))
+    y2 = max(0, min(y2, h))
+
+    # Create the cropped clip
+    return clip.fl_image(lambda img: img[int(y1):int(y2), int(x1):int(x2)])
