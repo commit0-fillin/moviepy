@@ -17,7 +17,31 @@ def headblur(clip, fx, fy, r_zone, r_blur=None):
     Automatically deals with the case where part of the image goes
     offscreen.
     """
-    pass
+    if not headblur_possible:
+        raise ImportError("OpenCV is not installed. Please install it to use the headblur effect.")
+
+    if r_blur is None:
+        r_blur = r_zone // 2
+
+    def fl(gf, t):
+        img = gf(t)
+        h, w = img.shape[:2]
+        x = int(fx(t))
+        y = int(fy(t))
+
+        # Create a mask for the blur area
+        mask = np.zeros((h, w), dtype=np.uint8)
+        cv2.circle(mask, (x, y), r_zone, (255, 255, 255), -1, lineType=cv2.CV_AA)
+
+        # Apply Gaussian blur to the image
+        blurred = cv2.GaussianBlur(img, (2*r_blur+1, 2*r_blur+1), 0)
+
+        # Blend the original image and the blurred image using the mask
+        result = np.where(mask[:,:,np.newaxis] == 255, blurred, img)
+
+        return result
+
+    return clip.fl(fl)
 if not headblur_possible:
     doc = headblur.__doc__
     headblur.__doc__ = doc
