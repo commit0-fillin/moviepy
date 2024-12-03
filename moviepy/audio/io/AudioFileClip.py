@@ -74,8 +74,13 @@ class AudioFileClip(AudioClip):
         """ Returns a copy of the AudioFileClip, i.e. a new entrance point
             to the audio file. Use copy when you have different clips
             watching the audio file at different times. """
-        pass
+        return AudioFileClip(self.filename, 
+                             buffersize=self.buffersize, 
+                             nbytes=self.reader.nbytes, 
+                             fps=self.reader.fps)
 
     def close(self):
         """ Close the internal reader. """
-        pass
+        if self.reader:
+            self.reader.close_proc()
+            self.reader = None
