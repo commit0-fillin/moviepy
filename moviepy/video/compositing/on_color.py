@@ -9,8 +9,19 @@ def on_color(clip, size=None, color=(0, 0, 0), pos=None, col_opacity=None):
     
     :param size: size of the final clip. By default it will be the
        size of the current clip.
-    :param bg_color: the background color of the final clip
+    :param color: the background color of the final clip
     :param pos: the position of the clip in the final clip.
-    :param col_opacity: should the added zones be transparent ?
+    :param col_opacity: opacity of the added color clip
     """
-    pass
+    if size is None:
+        size = clip.size
+
+    if pos is None:
+        pos = 'center'
+
+    color_clip = ColorClip(size, color)
+
+    if col_opacity is not None:
+        color_clip = color_clip.set_opacity(col_opacity)
+
+    return CompositeVideoClip([color_clip, clip.set_position(pos)], size=size)
