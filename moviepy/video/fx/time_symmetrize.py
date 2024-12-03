@@ -4,12 +4,13 @@ from .time_mirror import time_mirror
 
 @requires_duration
 @apply_to_mask
+@apply_to_audio
 def time_symmetrize(clip):
     """
     Returns a clip that plays the current clip once forwards and
-    then once backwards. This is very practival to make video that
+    then once backwards. This is very practical to make video that
     loop well, e.g. to create animated GIFs.
     This effect is automatically applied to the clip's mask and audio
     if they exist.
     """
-    pass
+    return concatenate_videoclips([clip, time_mirror(clip)])
