@@ -59,4 +59,22 @@ def ffmpeg_audiowrite(clip, filename, fps, nbytes, buffersize, codec='libvorbis'
 
     NOTE: verbose is deprecated.
     """
-    pass
+    if write_logfile:
+        logfile = open(filename + ".log", 'w+')
+    else:
+        logfile = None
+    
+    logger = proglog.default_bar_logger(logger)
+    
+    with FFMPEG_AudioWriter(filename, fps, nbytes, clip.nchannels, codec=codec,
+                            bitrate=bitrate, logfile=logfile,
+                            ffmpeg_params=ffmpeg_params) as writer:
+        for chunk in clip.iter_chunks(chunksize=buffersize,
+                                      quantize=True,
+                                      nbytes=nbytes,
+                                      fps=fps,
+                                      logger=logger):
+            writer.write_frames(chunk)
+
+    if write_logfile:
+        logfile.close()
