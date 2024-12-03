@@ -5,4 +5,8 @@ def colorx(clip, factor):
         to decrease or increase the clip's brightness (is that the
         reight word ?)
     """
-    pass
+    def modify_frame(get_frame, t):
+        frame = get_frame(t)
+        return np.clip(frame * factor, 0, 255).astype('uint8')
+    
+    return clip.fl(modify_frame)
