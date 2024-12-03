@@ -51,7 +51,12 @@ class Clip:
         there is an outplace transformation of the clip (clip.resize,
         clip.subclip, etc.)
         """
-        pass
+        new_clip = copy(self)
+        if hasattr(self, 'audio') and self.audio is not None:
+            new_clip.audio = self.audio.copy()
+        if hasattr(self, 'mask') and self.mask is not None:
+            new_clip.mask = self.mask.copy()
+        return new_clip
 
     @convert_to_seconds(['t'])
     def get_frame(self, t):
@@ -59,7 +64,16 @@ class Clip:
         Gets a numpy array representing the RGB picture of the clip at time t
         or (mono or stereo) value for a sound clip
         """
-        pass
+        if self.memoize:
+            if t == self.memoized_t:
+                return self.memoized_frame
+            else:
+                frame = self.make_frame(t)
+                self.memoized_t = t
+                self.memoized_frame = frame
+                return frame
+        else:
+            return self.make_frame(t)
 
     def fl(self, fun, apply_to=None, keep_duration=True):
         """ General processing of a clip.
@@ -98,7 +112,26 @@ class Clip:
         >>> newclip = clip.fl(fl, apply_to='mask')
 
         """
-        pass
+        new_clip = self.copy()
+        new_clip.make_frame = lambda t: fun(self.get_frame, t)
+        
+        if not keep_duration:
+            new_clip.duration = None
+            new_clip.end = None
+
+        if apply_to is None:
+            return new_clip
+
+        if apply_to in ['mask', 'audio'] or isinstance(apply_to, (list, tuple)):
+            if isinstance(apply_to, str):
+                apply_to = [apply_to]
+
+            for attr in apply_to:
+                if hasattr(new_clip, attr) and getattr(new_clip, attr) is not None:
+                    new_attr = getattr(new_clip, attr).fl(fun, keep_duration=keep_duration)
+                    setattr(new_clip, attr, new_attr)
+
+        return new_clip
 
     def fl_time(self, t_func, apply_to=None, keep_duration=False):
         """
@@ -131,7 +164,7 @@ class Clip:
         >>> newclip = clip.fl_time(lambda: 3-t)
 
         """
-        pass
+        return self.fl(lambda gf, t: gf(t_func(t)), apply_to, keep_duration)
 
     def fx(self, func, *args, **kwargs):
         """
@@ -154,7 +187,7 @@ class Clip:
         >>> resize( volumex( mirrorx( clip ), 0.5), 0.3)
 
         """
-        pass
+        return func(self, *args, **kwargs)
 
     @apply_to_mask
     @apply_to_audio
@@ -178,7 +211,12 @@ class Clip:
         These changes are also applied to the ``audio`` and ``mask``
         clips of the current clip, if they exist.
         """
-        pass
+        self.start = t
+        if self.duration is not None:
+            if change_end:
+                self.end = t + self.duration
+            else:
+                self.duration = self.end - self.start
 
     @apply_to_mask
     @apply_to_audio
