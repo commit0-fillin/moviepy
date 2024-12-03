@@ -44,11 +44,31 @@ else:
 
 def get_setting(varname):
     """ Returns the value of a configuration variable. """
-    pass
+    if varname == 'FFMPEG_BINARY':
+        return FFMPEG_BINARY
+    elif varname == 'IMAGEMAGICK_BINARY':
+        return IMAGEMAGICK_BINARY
+    else:
+        raise ValueError(f"Unknown configuration variable: {varname}")
 
 def change_settings(new_settings=None, filename=None):
     """ Changes the value of configuration variables."""
-    pass
+    global FFMPEG_BINARY, IMAGEMAGICK_BINARY
+
+    if new_settings is not None:
+        for key, value in new_settings.items():
+            if key == 'FFMPEG_BINARY':
+                FFMPEG_BINARY = value
+            elif key == 'IMAGEMAGICK_BINARY':
+                IMAGEMAGICK_BINARY = value
+            else:
+                raise ValueError(f"Unknown configuration variable: {key}")
+
+    if filename is not None:
+        # Save the current settings to the specified file
+        with open(filename, 'w') as f:
+            f.write(f"FFMPEG_BINARY = '{FFMPEG_BINARY}'\n")
+            f.write(f"IMAGEMAGICK_BINARY = '{IMAGEMAGICK_BINARY}'\n")
 if __name__ == '__main__':
     if try_cmd([FFMPEG_BINARY])[0]:
         print('MoviePy : ffmpeg successfully found.')
